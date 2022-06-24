@@ -2,10 +2,11 @@
 
 import logging
 import uuid
+import sys
 
 import Ice
 import IceStorm
-
+from random import choice
 import IceFlix
 from iceflix.service_announcement import (
     ServiceAnnouncementsListener,
@@ -20,21 +21,80 @@ class Main(IceFlix.Main):
     for this interface. Use it with caution
     """
 
-    def __init__(self):
+    def __init__(self, adminToken):
         """Create the Main servant instance."""
-        self.service_id = str(uuid.uuid4())
+        self.service_id = str(uuid.uuid4()) # key de las etradas de los diccionarios de microservicios
+        self.authenticators_proxies = []
+        self.catalog_proxies = []
+        self.adminToken = adminToken
 
     def share_data_with(self, service):
         """Share the current database with an incoming service."""
-        service.updateDB(None, self.service_id)
+        database = volatileServicesI(self.authenticators_proxies, self.catalog_proxies)
+        service.updateDB(database, self.service_id)
 
     def updateDB(
-        self, values, service_id, current
+        self, current_service, service_id, current
     ):  # pylint: disable=invalid-name,unused-argument
         """Receives the current main service database from a peer."""
+        #if service_id not in values:
+
         logging.info(
             "Receiving remote data base from %s to %s", service_id, self.service_id
         )
+
+    def getAuthenticator(self, current=None):
+        """Retorno de un proxy de autenticacion registrado"""
+        service = None
+        logging.info("Requested the authentication service")
+        while True:
+            try:
+                if self.authenticators_proxies:
+                    service = choice(self.authenticators_proxies)
+                    service.ice_ping()
+                    logging.info(f"Available authentication services: {self.authenticators_proxies}")
+                    return service
+                else:
+                    logging.info("No authentication service is available")
+                
+                raise IceFlix.TemporaryUnavailable
+
+            except (Ice.ObjectNotExistException, Ice.ConnectionRefusedException):
+                self.authenticators_proxies.remove(service)
+
+            except Ice.ConnectTimeoutException:
+                raise IceFlix.TemporaryUnavailable
+
+    def getCatalog(self, current=None):
+        """Debe retornar un proxy de catálogo registrado"""
+        service = None
+        logging.info("Requested the catalog service")
+        while True:
+            try:
+                if self.catalog_proxies:
+                    service = choice(self.catalog_proxies)
+                    service.ice_ping()
+                    logging.info(f"Available catalog services: {self.catalog_proxies}")
+                    return service
+
+                logging.info("No catalog service is available")
+                raise IceFlix.TemporaryUnavailable
+
+            except (Ice.ObjectNotExistException, Ice.ConnectionRefusedException):
+                self.announcement_sub.catalog_proxies.remove(service)
+
+            except Ice.ConnectTimeoutException:
+                raise IceFlix.TemporaryUnavailable
+    
+    def isAdmin(self, adminToken, current=None):
+        return adminToken==self.adminToken
+
+
+class volatileServicesI(IceFlix.VolatileServices):
+    
+    def __init__(self, authenticators, mediaCatalog):
+        self.authenticators = authenticators
+        self.mediaCatalog = mediaCatalog
 
 
 class MainApp(Ice.Application):
@@ -81,7 +141,7 @@ class MainApp(Ice.Application):
         self.adapter = comm.createObjectAdapter("Main")
         self.adapter.activate()
 
-        self.proxy = self.adapter.addWithUUID(self.servant)
+        self.proxy = self.adapter.addWithUUID(self.servant)  # value de los diccionarios de todos los servicios
 
         self.setup_announcements()
         self.announcer.start_service()
@@ -91,3 +151,5 @@ class MainApp(Ice.Application):
 
         self.announcer.stop()
         return 0
+
+MainApp().main(sys.argv)
