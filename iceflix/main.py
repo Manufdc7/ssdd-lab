@@ -1,18 +1,25 @@
+#!/usr/bin/env python3
 """Module containing a template for a main service."""
 
 import logging
 import uuid
 import sys
-
+from threading import Lock
 import Ice
 import IceStorm
 from random import choice
-import IceFlix
-from iceflix.service_announcement import (
+from service_announcement import (
     ServiceAnnouncementsListener,
     ServiceAnnouncementsSender,
 )
 
+try:
+    import IceFlix
+except ImportError:
+    Ice.loadSlice(os.path.join(os.path.dirname(__file__), "iceflix.ice"))
+    import IceFlix  
+
+logging.getLogger().setLevel(logging.DEBUG)
 
 class Main(IceFlix.Main):
     """Servant for the IceFlix.Main interface.
@@ -27,10 +34,14 @@ class Main(IceFlix.Main):
         self.authenticators_proxies = []
         self.catalog_proxies = []
         self.adminToken = adminToken
+        self.updated = False
+        self.mains = {}
+        self.lock = Lock()
 
-    def share_data_with(self, service):
+    def share_data_with(self, service,service_announcement):
         """Share the current database with an incoming service."""
         database = volatileServicesI(self.authenticators_proxies, self.catalog_proxies)
+        self.mains = service_announcement.mains
         service.updateDB(database, self.service_id)
 
     def updateDB(
@@ -38,6 +49,16 @@ class Main(IceFlix.Main):
     ):  # pylint: disable=invalid-name,unused-argument
         """Receives the current main service database from a peer."""
         #if service_id not in values:
+        self.lock.acquire()
+        if self.updated:
+            self.lock.release()
+            return
+
+        logging.info("Updating database")
+        self.updated = True
+        self.authenticators_proxies = current_service.authenticators
+        self.catalog_proxies = current_service.mediaCatalogs
+        self.lock.release()
 
         logging.info(
             "Receiving remote data base from %s to %s", service_id, self.service_id
@@ -92,9 +113,9 @@ class Main(IceFlix.Main):
 
 class volatileServicesI(IceFlix.VolatileServices):
     
-    def __init__(self, authenticators, mediaCatalog):
+    def __init__(self, authenticators, media_catalog):
         self.authenticators = authenticators
-        self.mediaCatalog = mediaCatalog
+        self.mediaCatalogs = media_catalog
 
 
 class MainApp(Ice.Application):
@@ -102,7 +123,7 @@ class MainApp(Ice.Application):
 
     def __init__(self):
         super().__init__()
-        self.servant = Main()
+        self.servant = None
         self.proxy = None
         self.adapter = None
         self.announcer = None
@@ -112,9 +133,9 @@ class MainApp(Ice.Application):
         """Configure the announcements sender and listener."""
 
         communicator = self.communicator()
-        topic_manager = IceStorm.TopicManagerPrx.checkedCast(
-            communicator.propertyToProxy("IceStorm.TopicManager"),
-        )
+        proxy = communicator.stringToProxy("IceStorm/TopicManager:tcp -p 10000")
+        #proxy = communicator.propertyToProxy("IceStorm.TopicManager")
+        topic_manager = IceStorm.TopicManagerPrx.checkedCast(proxy)
 
         try:
             topic = topic_manager.create("ServiceAnnouncements")
@@ -141,9 +162,15 @@ class MainApp(Ice.Application):
         self.adapter = comm.createObjectAdapter("Main")
         self.adapter.activate()
 
+        self.servant = Main(comm.getProperties().getProperty("AdminToken"))
+
         self.proxy = self.adapter.addWithUUID(self.servant)  # value de los diccionarios de todos los servicios
 
         self.setup_announcements()
+
+
+
+
         self.announcer.start_service()
 
         self.shutdownOnInterrupt()

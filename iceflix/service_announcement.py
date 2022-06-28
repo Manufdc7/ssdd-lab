@@ -56,24 +56,28 @@ class ServiceAnnouncementsListener(IceFlix.ServiceAnnouncements):
             logging.debug("New service isn't of my type. Ignoring")
             return
 
-        self.servant.share_data_with(proxy)
+        self.servant.share_data_with(proxy,self)
 
     def announce(self, service, service_id, current):  # pylint: disable=unused-argument
         """Receive an announcement."""
-
         if service_id == self.service_id or service_id in self.known_ids:
             logging.debug("Received own announcement or already known. Ignoring")
             return
+        
+        self.known_ids.add(service_id)
 
         if service.ice_isA("::IceFlix::Main"):
+            logging.debug("Received main service")
             self.mains[service_id] = IceFlix.MainPrx.uncheckedCast(service)
 
         elif service.ice_isA("::IceFlix::Authenticator"):
+            logging.debug("Received authenticator service")
             self.authenticators[service_id] = IceFlix.AuthenticatorPrx.uncheckedCast(
                 service
             )
 
         elif service.ice_isA("::IceFlix::MediaCatalog"):
+            logging.debug("Received catalog service")
             self.catalogs[service_id] = IceFlix.MediaCatalogPrx.uncheckedCast(service)
 
         else:
@@ -103,6 +107,7 @@ class ServiceAnnouncementsSender:
 
     def start_service(self):
         """Start sending the initial announcement."""
+        logging.info("Starting service...")
         self.publisher.newService(self.proxy, self.service_id)
         self.timer = threading.Timer(3.0, self.announce)
         self.timer.start()
@@ -110,7 +115,6 @@ class ServiceAnnouncementsSender:
     def announce(self):
         """Start sending the announcements."""
         self.timer = None
-
         self.publisher.announce(self.proxy, self.service_id)
         self.timer = threading.Timer(10.0, self.announce)
         self.timer.start()
