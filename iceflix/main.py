@@ -6,6 +6,7 @@ import uuid
 import sys
 from threading import Lock
 import Ice
+import os
 import IceStorm
 from random import choice
 from service_announcement import (
@@ -30,25 +31,29 @@ class Main(IceFlix.Main):
 
     def __init__(self, adminToken):
         """Create the Main servant instance."""
-        self.service_id = str(uuid.uuid4()) # key de las etradas de los diccionarios de microservicios
+        self.service_id = str(uuid.uuid4()) 
         self.authenticators_proxies = []
         self.catalog_proxies = []
         self.adminToken = adminToken
         self.updated = False
-        self.mains = {}
+        self.announcement_sub
         self.lock = Lock()
 
-    def share_data_with(self, service,service_announcement):
+    def share_data_with(self, service, service_announcement):
         """Share the current database with an incoming service."""
         database = volatileServicesI(self.authenticators_proxies, self.catalog_proxies)
-        self.mains = service_announcement.mains
+        self.announcement_sub = service_announcement
         service.updateDB(database, self.service_id)
+
 
     def updateDB(
         self, current_service, service_id, current
     ):  # pylint: disable=invalid-name,unused-argument
         """Receives the current main service database from a peer."""
-        #if service_id not in values:
+        if service_id not in self.announcement_sub.mains:
+            logging.info(f"Service {service_id} unknown")
+            raise IceFlix.UnknownService
+
         self.lock.acquire()
         if self.updated:
             self.lock.release()
@@ -164,12 +169,9 @@ class MainApp(Ice.Application):
 
         self.servant = Main(comm.getProperties().getProperty("AdminToken"))
 
-        self.proxy = self.adapter.addWithUUID(self.servant)  # value de los diccionarios de todos los servicios
+        self.proxy = self.adapter.addWithUUID(self.servant) 
 
         self.setup_announcements()
-
-
-
 
         self.announcer.start_service()
 
