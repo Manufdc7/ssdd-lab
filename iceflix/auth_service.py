@@ -61,7 +61,7 @@ class UserUpdatesI(IceFlix.UserUpdates):
         """Evento de nuevo usuario"""
         logging.info("New user event received")
         if srv_id != self.auth_service.service_id and srv_id in self.auth_service.announcement_sub.authenticators:
-            logging.info(f"New user {user} added to database")
+            logging.info("New user %s added to database", user)
             data = read_file_contents("users.json")
 
             if not data.get(user):
@@ -72,7 +72,7 @@ class UserUpdatesI(IceFlix.UserUpdates):
         """Evento de nuevo token"""
         logging.info("New token event received")
         if srv_id != self.auth_service.service_id and srv_id in self.auth_service.announcement_sub.authenticators:
-            logging.info(f"New token {token} for user {user} added to database")
+            logging.info("New token %s for user %s added to database", token, user)
             self.auth_service.tokens[token] = user
 
 
@@ -87,14 +87,14 @@ class RevocationsI(IceFlix.Revocations):
         """Se elimina el token"""
         logging.info("Revoked token event received")
         if srv_id != self.auth_service.service_id and srv_id in self.auth_service.announcement_sub.authenticators and token in self.auth_service.tokens:
-            logging.info(f"Token {token} has been deleted")
+            logging.info("Token %s has been deleted", token)
             self.auth_service.tokens.pop(token)
 
     def revokeUser(self, user, srv_id, current=None):
         """Se elimina el usuario"""
         logging.info("Revoked user event received")
         if srv_id != self.auth_service.service_id and srv_id in self.auth_service.announcement_sub.authenticators:
-            logging.info(f"User {user} has been deleted")
+            logging.info("User %s has been deleted", user)
             data = read_file_contents("users.json")
 
             if data.get(user):
@@ -123,7 +123,7 @@ class AuthenticatorI(IceFlix.Authenticator):
             new_token = token_urlsafe(40)
             self.tokens[new_token] = user
 
-            logging.info(f"New token {new_token} granted to {user}. Publishing new token event")
+            logging.info("New token %s granted to %s. Publishing new token event", new_token, user)
             self.users_publisher.newToken(user, new_token, self.service_id)
 
             Timer(120.0, self.revocations_publisher.revokeToken, [new_token, self.service_id]).start()
@@ -156,7 +156,7 @@ class AuthenticatorI(IceFlix.Authenticator):
                     raise IceFlix.Unauthorized
                 break
             except Ice.ConnectionRefusedException:
-                logging.info(f"Main service {main_service_id} does not exist. Removing")
+                logging.info("Main service %s does not exist. Removing", main_service_id)
                 self.announcement_sub.mains.pop(main_service_id)
 
         data = read_file_contents("users.json")
@@ -165,7 +165,7 @@ class AuthenticatorI(IceFlix.Authenticator):
             data[user] = password_hash
             write_file("users.json", data)
 
-        logging.info(f"User {user} added to database. Publishing add user event.")
+        logging.info("User %s added to database. Publishing add user event.", user)
         self.users_publisher.newUser(user, password_hash, self.service_id)
 
 
@@ -179,14 +179,14 @@ class AuthenticatorI(IceFlix.Authenticator):
                     raise IceFlix.Unauthorized
                 break
             except Ice.ConnectionRefusedException:
-                logging.info(f"Main service {main_service_id} does not exist. Removing")
+                logging.info("Main service %s does not exist. Removing", main_service_id)
                 self.announcement_sub.mains.pop(main_service_id)
 
         data = read_file_contents("users.json")
         if data.get(user):
             data.pop(user)
             write_file("users.json", data)
-            logging.info(f"User {user} removed from database. Publishing revoke user event")
+            logging.info("User %s removed from database. Publishing revoke user event", user)
             self.revocations_publisher.revokeUser(user, self.service_id)
 
 
@@ -194,7 +194,7 @@ class AuthenticatorI(IceFlix.Authenticator):
         """Actualiza la lista de usuarios a partir de la primera llamada recibida.
         Se ha usado cerrojos para tener exclusión mutua a la base de datos"""
         if service_id not in self.announcement_sub.authenticators:
-            logging.info(f"Cannot update database. Service {service_id} unknown")
+            logging.info("Cannot update database. Service %s unknown", service_id)
             raise IceFlix.UnknownService
 
         self.lock.acquire()
