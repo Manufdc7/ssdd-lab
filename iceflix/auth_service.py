@@ -4,17 +4,16 @@
 #pylint: disable=no-member, invalid-name, unused-argument, import-error, wrong-import-position, logging-format-interpolation
 
 import logging
-from pickle import NONE
+
 import uuid
 import sys
 from threading import Lock, Timer
-import Ice
-import IceStorm
 import json
 import os
-import logging
 from secrets import token_urlsafe
 from random import choice
+import Ice
+import IceStorm
 from service_announcement import (
     ServiceAnnouncementsListener,
     ServiceAnnouncementsSender,
@@ -233,6 +232,7 @@ class AuthApp(Ice.Application):
         self.subscriber = None
 
     def get_topic(self, topic_manager, topic_name):
+        
         try:
             return topic_manager.create(topic_name)
         except IceStorm.TopicExists:

@@ -79,7 +79,6 @@ class ServiceAnnouncementsListener(IceFlix.ServiceAnnouncements):
         if service_id == self.service_id or service_id in self.known_ids:
             #logging.debug("Received own announcement or already known. Ignoring")
             return
-        
         self.known_ids.add(service_id)
 
         if service.ice_isA("::IceFlix::Main"):
