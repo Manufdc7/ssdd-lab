@@ -72,7 +72,7 @@ class UserUpdatesI(IceFlix.UserUpdates):
     def newToken(self, user, token, srv_id, current=None):
         """Evento de nuevo token"""
         logging.info("New token event received")
-        if srv_id != self.auth_service.uuid and srv_id in self.auth_service.announcement_sub.authenticators:
+        if srv_id != self.auth_service.service_id and srv_id in self.auth_service.announcement_sub.authenticators:
             logging.info(f"New token {token} for user {user} added to database")
             self.auth_service.tokens[token] = user
 
@@ -87,14 +87,14 @@ class RevocationsI(IceFlix.Revocations):
     def revokeToken(self, token, srv_id, current=None):
         """Se elimina el token"""
         logging.info("Revoked token event received")
-        if srv_id != self.auth_service.uuid and srv_id in self.auth_service.announcement_sub.authenticators and token in self.auth_service.tokens:
+        if srv_id != self.auth_service.service_id and srv_id in self.auth_service.announcement_sub.authenticators and token in self.auth_service.tokens:
             logging.info(f"Token {token} has been deleted")
             self.auth_service.tokens.pop(token)
 
     def revokeUser(self, user, srv_id, current=None):
         """Se elimina el usuario"""
         logging.info("Revoked user event received")
-        if srv_id != self.auth_service.uuid and srv_id in self.auth_service.announcement_sub.authenticators:
+        if srv_id != self.auth_service.service_id and srv_id in self.auth_service.announcement_sub.authenticators:
             logging.info(f"User {user} has been deleted")
             data = read_file_contents("users.json")
 
@@ -107,7 +107,7 @@ class AuthenticatorI(IceFlix.Authenticator):
     """Implementación de la interfaz Authenticator del módulo IceFlix"""
     def __init__(self, users_publisher, revocations_publisher):
         """Inicialización de la clase"""
-        self.uuid = str(uuid.uuid4())
+        self.service_id = str(uuid.uuid4())
         self.users_publisher = users_publisher
         self.revocations_publisher = revocations_publisher
         self.lock = Lock()
@@ -125,9 +125,9 @@ class AuthenticatorI(IceFlix.Authenticator):
             self.tokens[new_token] = user
 
             logging.info(f"New token {new_token} granted to {user}. Publishing new token event")
-            self.users_publisher.newToken(user, new_token, self.uuid)
+            self.users_publisher.newToken(user, new_token, self.service_id)
             
-            Timer(120.0, self.revocations_publisher.revokeToken, [new_token, self.uuid]).start()
+            Timer(120.0, self.revocations_publisher.revokeToken, [new_token, self.service_id]).start()
 
             return new_token
 
@@ -167,12 +167,11 @@ class AuthenticatorI(IceFlix.Authenticator):
             write_file("users.json", data)
 
         logging.info(f"User {user} added to database. Publishing add user event.")
-        self.users_publisher.newUser(user, password_hash, self.uuid)
+        self.users_publisher.newUser(user, password_hash, self.service_id)
 
 
     def removeUser(self, user, admin_token, current=None):
-        """Comprueba el token de administrador, lee todos los usuarios del fichero
-        de usuarios y elimina uno de estos"""
+        """It checks the admin token, reads all the users from the file and remove one of them"""
         while True:
             try:
                 main_service_id = choice(list(self.announcement_sub.mains.keys()))
@@ -192,8 +191,8 @@ class AuthenticatorI(IceFlix.Authenticator):
 
 
     def updateDB(self, database, service_id, current=None):
-        """Actualiza la lista de usuarios a partir de la primera llamada recibida.
-        Se ha usado cerrojos para tener exclusión mutua a la base de datos"""
+        """Updates the users list from the first call received. Locks have been used to have mutual exclusion
+        to the DB""" 
         if service_id not in self.announcement_sub.authenticators:
             logging.info(f"Cannot update database. Service {service_id} unknown")
             raise IceFlix.UnknownService
@@ -212,11 +211,10 @@ class AuthenticatorI(IceFlix.Authenticator):
         self.tokens = tokens
         self.lock.release()
 
-    def share_data_with(self, service, service_announcement):
+    def share_data_with(self, service):
         """Share the current database with an incoming service."""
         users = read_file_contents("users.json")
         database = UsersDB_I(users, self.tokens)
-        self.anonuncement_sub = service_announcement
         service.updateDB(database, self.service_id)
 
 
@@ -232,22 +230,30 @@ class AuthApp(Ice.Application):
         self.announcer = None
         self.subscriber = None
 
+
+    def get_topic(self, topic_manager, topic_name):
+        try:
+            return topic_manager.create(topic_name)
+        except IceStorm.TopicExists:
+            return topic_manager.retrieve(topic_name)
+
     def setup(self):
         """Configure the announcements sender and listener."""
-
         communicator = self.communicator()
         proxy = communicator.propertyToProxy("IceStorm.TopicManager")
         topic_manager = IceStorm.TopicManagerPrx.checkedCast(proxy)
 
-        try:
-            topic_announcement = topic_manager.create("ServiceAnnouncements")
-            topic_users = topic_manager.create("Users")
-            topic_revocations = topic_manager.create("Revocations")
+        topic_announcement = self.get_topic(topic_manager, "ServiceAnnouncements")
+        topic_users = self.get_topic(topic_manager, "Users")
+        topic_revocations = self.get_topic(topic_manager, "Revocations")
 
-        except IceStorm.TopicExists:
-            topic_announcement = topic_manager.retrieve("ServiceAnnouncements")
-            topic_users = topic_manager.retrieve("Users")
-            topic_revocations = topic_manager.retrieve("Revocations")
+        users_publisher = IceFlix.UserUpdatesPrx.uncheckedCast(topic_users.getPublisher())
+        revocations_publisher = IceFlix.RevocationsPrx.uncheckedCast(topic_revocations.getPublisher())
+
+        self.servant = AuthenticatorI(users_publisher, revocations_publisher)
+
+        self.proxy = self.adapter.addWithUUID(self.servant)
+
 
         self.announcer = ServiceAnnouncementsSender(
             topic_announcement,
@@ -256,14 +262,9 @@ class AuthApp(Ice.Application):
         )
 
         self.subscriber = ServiceAnnouncementsListener(
-            self.servant, self.servant.service_id, IceFlix.MainPrx
+            self.servant, self.servant.service_id, IceFlix.AuthenticatorPrx, self.proxy
         )
-
-        users_publisher = IceFlix.UserUpdatesPrx.uncheckedCast(topic_users.getPublisher())
-        revocations_publisher = IceFlix.RevocationsPrx.uncheckedCast(topic_revocations.getPublisher())
-
-        self.servant = AuthenticatorI(users_publisher, revocations_publisher)
-
+        
         subscriber_prx = self.adapter.addWithUUID(self.subscriber)
         users_prx = self.adapter.addWithUUID(UserUpdatesI(self.servant))
         revocations_prx = self.adapter.addWithUUID(RevocationsI(self.servant))
@@ -279,8 +280,6 @@ class AuthApp(Ice.Application):
         comm = self.communicator()
         self.adapter = comm.createObjectAdapter("Auth")
         self.adapter.activate()
-
-        self.proxy = self.adapter.addWithUUID(self.servant)  # value de los diccionarios de todos los servicios
 
         self.setup()
         self.announcer.start_service()
