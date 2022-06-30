@@ -7,16 +7,9 @@ import logging
 import signal
 from uuid import uuid4
 from hashlib import sha256
-import time
-from re import sub
-from os import path, _exit
+from os import _exit
 from threading import Timer
 
-
-try:
-    import vlc
-except ImportError:
-    logging.warning('python-vlc required for player!')
 
 import Ice
 import IceStorm
