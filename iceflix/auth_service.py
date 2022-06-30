@@ -30,8 +30,7 @@ logging.getlogging().setLevel(logging.DEBUG)
 
 
 def read_file_contents(file_name):
-    """Lee los usuarios y devuelve un diccionario. Usado por la interfaz de los canales de eventos
-    y Authenticator"""
+    """Reads from a file"""
     data = {}
     with open(file_name, "r", encoding="utf-8") as file:
         if os.stat("users.json").st_size != 0:
@@ -39,27 +38,25 @@ def read_file_contents(file_name):
     return data
 
 def write_file(file_name, contents):
-    """Escribe en un archivo. Usado la interfaz de los canales de eventos y Authenticator"""
+    """It writes in a file"""
     with open(file_name, "w", encoding="utf-8") as file:
         json.dump(contents, file)
 
 
 class UsersDB_I(IceFlix.UsersDB):
-    """Estructura formada por los usuarios y el hash de sus respectivas contraseñas"""
+    """Structure formed by users and the hash of their respectives passwords"""
     def __init__(self, user_passwords, users_token):
         self.userPasswords = user_passwords
         self.usersToken = users_token
 
 
 class UserUpdatesI(IceFlix.UserUpdates):
-    """Implementación del canal de eventos de actualización de usuarios o tokens.
-    Cuando recibe una llamada se comprueba que no se haya envíado a sí mismo para no añadir
-    un token o usuario dos veces"""
+    """Implementation of the events channel of updates from users and tokens."""
     def __init__(self, auth_service):
         self.auth_service = auth_service
 
     def newUser(self, user, pass_hash, srv_id, current=None):
-        """Evento de nuevo usuario"""
+        """New user token"""
         logging.info("New user event received")
         if srv_id != self.auth_service.uuid and srv_id in self.auth_service.announcement_sub.authenticators:
             logging.info(f"New user {user} added to database")
@@ -70,7 +67,7 @@ class UserUpdatesI(IceFlix.UserUpdates):
                 write_file("users.json", data)
 
     def newToken(self, user, token, srv_id, current=None):
-        """Evento de nuevo token"""
+        """New Token event"""
         logging.info("New token event received")
         if srv_id != self.auth_service.service_id and srv_id in self.auth_service.announcement_sub.authenticators:
             logging.info(f"New token {token} for user {user} added to database")
@@ -78,21 +75,19 @@ class UserUpdatesI(IceFlix.UserUpdates):
 
 
 class RevocationsI(IceFlix.Revocations):
-    """Implementación del canal de eventos de revocación de usuarios y tokens.
-    Cuando recibe una llamada se comprueba que no se haya envíado a sí mismo para no eliminar
-    un token o usuario dos veces"""
+    """Implementation of the events channel of revocations from users and tokens."""
     def __init__(self, auth_service):
         self.auth_service = auth_service
 
     def revokeToken(self, token, srv_id, current=None):
-        """Se elimina el token"""
+        """Removes a token"""
         logging.info("Revoked token event received")
         if srv_id != self.auth_service.service_id and srv_id in self.auth_service.announcement_sub.authenticators and token in self.auth_service.tokens:
             logging.info(f"Token {token} has been deleted")
             self.auth_service.tokens.pop(token)
 
     def revokeUser(self, user, srv_id, current=None):
-        """Se elimina el usuario"""
+        """It removes a user"""
         logging.info("Revoked user event received")
         if srv_id != self.auth_service.service_id and srv_id in self.auth_service.announcement_sub.authenticators:
             logging.info(f"User {user} has been deleted")
@@ -104,9 +99,9 @@ class RevocationsI(IceFlix.Revocations):
 
 
 class AuthenticatorI(IceFlix.Authenticator):
-    """Implementación de la interfaz Authenticator del módulo IceFlix"""
+    """Implementation of the Authenticator interface from the IceFlix Module"""
     def __init__(self, users_publisher, revocations_publisher):
-        """Inicialización de la clase"""
+        """Class initialization"""
         self.service_id = str(uuid.uuid4())
         self.users_publisher = users_publisher
         self.revocations_publisher = revocations_publisher
@@ -117,7 +112,7 @@ class AuthenticatorI(IceFlix.Authenticator):
 
 
     def refreshAuthorization(self, user, password_hash, current=None):
-        """Lee el fichero de usuarios y comprueba credenciales correctas"""
+        """Reads the file of the users and checks if the credentials are correct"""
         data = read_file_contents("users.json")
 
         if data.get(user) and data[user] == password_hash:
@@ -135,12 +130,12 @@ class AuthenticatorI(IceFlix.Authenticator):
 
 
     def isAuthorized(self, user_token, current=None):
-        """Comprueba que el token de usuario esté en la lista de tokens"""
+        """Check the token of the user is inside the list of the tokens"""
         return user_token in self.tokens
 
 
     def whois(self, user_token, current=None):
-        """Devuelve el nombre de usuario a partir de un token"""
+        """Returns the name of the user from a token"""
         if self.tokens.get(user_token):
             return self.tokens[user_token]
 
@@ -148,8 +143,7 @@ class AuthenticatorI(IceFlix.Authenticator):
 
 
     def addUser(self, user, password_hash, admin_token, current=None):
-        """Comprueba el token de administrador, lee todos los usuarios del fichero
-        de usuarios y añade uno nuevo"""
+        """It checks the admin token, read all the users from the file of users and add a new one"""
         while True:
             try:
                 main_service_id = choice(list(self.announcement_sub.mains.keys()))
