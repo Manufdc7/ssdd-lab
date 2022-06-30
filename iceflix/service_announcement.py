@@ -10,7 +10,6 @@ import threading
 import Ice
 import IceStorm
 
-
 try:
     import IceFlix
 except ImportError:
@@ -21,7 +20,7 @@ except ImportError:
 class ServiceAnnouncementsListener(IceFlix.ServiceAnnouncements):
     """Listener for the ServiceAnnouncements topic."""
 
-    def __init__(self, own_servant, own_service_id, own_type):
+    def __init__(self, own_servant, own_service_id, own_type, own_proxy):
         """Initialize a ServiceAnnouncements topic listener.
 
         The `own_servant` argument should be the service servant object, that is
@@ -38,6 +37,7 @@ class ServiceAnnouncementsListener(IceFlix.ServiceAnnouncements):
         self.servant = own_servant
         self.service_id = own_service_id
         self.own_type = own_type
+        self.proxy = own_proxy
 
         self.authenticators = {}
         self.catalogs = {}
@@ -71,11 +71,13 @@ class ServiceAnnouncementsListener(IceFlix.ServiceAnnouncements):
         publisher.announce(self.proxy, self.servant.service_id)
 
         threading.Timer(0.5, self.servant.share_data_with, [proxy]).start()
+        #self.servant.share_data_with(proxy)
+
 
     def announce(self, service, service_id, current):  # pylint: disable=unused-argument
         """Receive an announcement."""
         if service_id == self.service_id or service_id in self.known_ids:
-            logging.debug("Received own announcement or already known. Ignoring")
+            #logging.debug("Received own announcement or already known. Ignoring")
             return
         
         self.known_ids.add(service_id)

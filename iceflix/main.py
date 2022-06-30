@@ -31,7 +31,7 @@ class Main(IceFlix.Main):
 
     def __init__(self, adminToken):
         """Create the Main servant instance."""
-        self.service_id = str(uuid.uuid4()) 
+        self.service_id = str(uuid.uuid4()) # key de las etradas de los diccionarios de microservicios
         self.authenticators_proxies = []
         self.catalog_proxies = []
         self.adminToken = adminToken
@@ -69,7 +69,7 @@ class Main(IceFlix.Main):
         )
 
     def getAuthenticator(self, current=None):
-        """Returns a registered authenticator proxy """
+        """Retorno de un proxy de autenticacion registrado"""
         service = None
         logging.info("Requested the authentication service")
         while True:
@@ -90,8 +90,9 @@ class Main(IceFlix.Main):
             except Ice.ConnectTimeoutException:
                 raise IceFlix.TemporaryUnavailable
 
+
     def getCatalog(self, current=None):
-        """Must return a registered catalog proxy"""
+        """Debe retornar un proxy de catálogo registrado"""
         service = None
         logging.info("Requested the catalog service")
         while True:
@@ -132,7 +133,6 @@ class MainApp(Ice.Application):
         self.adapter = None
         self.announcer = None
         self.subscriber = None
-        
 
     def setup_announcements(self):
         """Configure the announcements sender and listener."""
@@ -159,6 +159,7 @@ class MainApp(Ice.Application):
         subscriber_prx = self.adapter.addWithUUID(self.subscriber)
         topic.subscribeAndGetPublisher({}, subscriber_prx)
 
+
     def run(self, args):
         """Run the application, adding the needed objects to the adapter."""
         logging.info("Running Main application")
@@ -171,7 +172,7 @@ class MainApp(Ice.Application):
 
         self.proxy = self.adapter.addWithUUID(self.servant)
 
-        print(f"\n\nPROXY = {self.proxy}\n\nTOKEN DE ADMINISTRADOR = {admin_token}\n") 
+        print(f"\n\nPROXY = {self.proxy}\n\nTOKEN DE ADMINISTRADOR = {admin_token}\n")
 
         self.setup_announcements()
 

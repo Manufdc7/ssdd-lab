@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+# vim: set ft = python3
+#pylint: disable=no-member, invalid-name, unused-argument, import-error, wrong-import-position
+
+import sys
+import logging
+import signal
+from uuid import uuid4
+from hashlib import sha256
+import time
+from re import sub
+from os import path, _exit
+from threading import Timer
+
+
+try:
+    import vlc
+except ImportError:
+    logging.warning('python-vlc required for player!')
+
+import Ice
+import IceStorm
+
+Ice.loadSlice("iceflix/iceflix.ice")
+import IceFlix
+
+
+logger = logging.getLogger(f"[CLIENT {str(uuid4())}]")
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s:%(name)s:%(message)s')
+file_handler = logging.FileHandler("client.log")
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+
+class RevocationsI(IceFlix.Revocations):
+    """Implementación del canal de eventos de revocación de usuarios y tokens en el cliente."""
+    def __init__(self, client):
+        self.client = client
+
+    def revokeToken(self, token_expired, srv_id, current=None):
+        """Revocación de token. Se comprueba que es el mismo que el usado por el cliente y
+        se actualiza el token"""
+        logger.info("Revoked token event received")
+        try:
+            if self.client.token == token_expired:
+                logger.info("token expired, updating...")
+                self.client.token = ""
+                self.client.token = self.client.main_proxy.getAuthenticator().refreshAuthorization(self.client.user, self.client.pass_hash)
+        except AttributeError:
+            logger.info("Main proxy unavailable. Cannot figure out current user")
+    
+    
+    def revokeUser(self, user, srv_id, current=None):
+        """Revocación de usuario. Se comprueba que es el mismo que el usado por el cliente y
+        se cierra sesión"""
+        logger.info("Revoked user event received")
+        try:
+            if self.client.main_proxy.getAuthenticator().whois(self.client.token) == user:
+                logger.info("Closing session...")
+                self.client.token = ""
+        except AttributeError:
+            logger.info("Main proxy unavailable. Cannot figure out current user")
+        except IceFlix.Unauthorized:
+            print("Token already deleted or user token does not match the token received")
+
+
+class Client(Ice.Application):
+    """Clase cliente"""
+    def __init__(self):
+        """Se inicializa el proxy, el token, el reproductor de vídeo, un proxy de stream_controller,
+        un proxy de MediaUploader y las opciones que tendrá el usuario"""
+        self.main_proxy = None
+        self.user = ""
+        self.pass_hash = ""
+        self.token = ""
+        self.player = None
+        self.controller_proxy = None
+        self.adapter = None
+
+        self.main_options = {"conectar", "iniciar sesión", "cerrar sesión", "añadir usuario", "eliminar usuario", "salir"}
+        self.main_options_str = "Eliga una opción: \n- Conectar\n- Iniciar sesión\n- Cerrar sesión\n- Añadir usuario\n- Eliminar usuario\n- Salir\n> "
+
+
+    def print_state(self):
+        """Imprime la conexión y la sesión del usuario"""
+        if not self.main_proxy:
+            print("\nEstado: Desconectado")
+        else:
+            print("\nEstado: Conectado")
+
+        if self.token == "":
+            print("Usuario: No hay ningún usuario activo")
+        else:
+            try:
+                user = self.main_proxy.getAuthenticator().whois(self.token)
+                print(f"Usuario: {user}")
+            except (IceFlix.TemporaryUnavailable, AttributeError):
+                print("No hay ningún servicio de autenticación disponible para comprobar usuario")
+            except IceFlix.Unauthorized:
+                print("Usuario actual no válido")
+
+
+    def connect(self):
+        """Se obtiene un proxy a partir de la línea de comandos"""
+        try:
+            main_proxy_str = input("Introduzca el proxy del servicio principal:\n> ")
+            main_proxy_obj_prx = self.communicator().stringToProxy(main_proxy_str)
+            self.main_proxy = IceFlix.MainPrx.checkedCast(main_proxy_obj_prx)
+
+            if self.main_proxy:
+                print("Conexión establecida")
+            else:
+                print("Proxy inválido. Inténtelo de nuevo")
+
+        except (Ice.ConnectionRefusedException, Ice.NotRegisteredException, Ice.NoEndpointException, Ice.ProxyParseException):
+            print("No se ha reconocido el servicio, introduzca correctamente el proxy")
+        except (Ice.ConnectTimeoutException, Ice.ObjectNotExistException):
+            print("Servicio no disponible")
+
+
+    def log_in(self):
+        """Se obtiene un proxy de autenticación y se inicia sesión a partir de unas credenciales"""
+        self.user = input("Introduzca el nombre de usuario\n> ")
+        password = input("Introduzca la contraseña\n> ")
+        self.pass_hash = sha256(password.encode()).hexdigest()
+        auth_service = self.main_proxy.getAuthenticator()
+        self.token = auth_service.refreshAuthorization(self.user, self.pass_hash)
+
+
+    def close_session(self):
+        """Se inicializa de nuevo el token"""
+        if self.token != "":
+            print("Cerrando sesión...")
+            self.token = ""
+        else:
+            print("No se ha iniciado sesión")
+
+
+    def add_user(self):
+        """Se añade un usuario a partir de unas credenciales"""
+        user = input("Introduzca el nombre de usuario a añadir\n> ")
+        password = input("Introduzca su contraseña\n> ")
+        admin_token = input("Introduzca el token administrativo\n> ")
+        auth_service = self.main_proxy.getAuthenticator()
+        auth_service.addUser(user, sha256(password.encode()).hexdigest(), admin_token)
+
+
+    def delete_user(self):
+        """Se borra el usuario y se cierra sesión si un usuario se borra a sí mismo"""
+        user = input("Introduzca el nombre de usuario a eliminar\n> ")
+        admin_token = input("Introduzca el token administrativo\n> ")
+        auth_service = self.main_proxy.getAuthenticator()
+        auth_service.removeUser(user, admin_token)
+
+        try:
+            if auth_service.whois(self.token) == user:
+                self.close_session()
+        except IceFlix.Unauthorized:
+            pass
+
+
+    def quit_program(self, signo, _frame):
+        """Se fija a True el evento de terminación del programa al recibir una señal de interrupción"""
+        print("Saliendo del programa...")
+        _exit(0)
+
+
+    def run(self, args):
+        """Comienzo del flujo de ejecución del programa cliente"""
+        for sig in ('TERM', 'HUP', 'INT'):
+            signal.signal(getattr(signal, 'SIG'+sig), self.quit_program)
+
+        self.adapter = self.communicator().createObjectAdapterWithEndpoints("Media_uploader", "tcp")
+        self.adapter.activate()
+
+        topic_manager = IceStorm.TopicManagerPrx.checkedCast(self.communicator().stringToProxy("IceStorm/TopicManager:tcp -p 10000"))
+
+        try:
+            revocations_topic = topic_manager.create("Revocations")
+        except IceStorm.TopicExists:
+            revocations_topic = topic_manager.retrieve("Revocations")
+
+        revocations_prx = self.adapter.addWithUUID(RevocationsI(self))
+        revocations_topic.subscribeAndGetPublisher({}, revocations_prx)
+
+        while True:
+            try:
+                self.print_state()
+                option = input(self.main_options_str).lower()
+
+                if not option in self.main_options:
+                    print("Opción no válida")
+                    continue
+
+                if option == "salir":
+                    print("Saliendo del programa...")
+                    break
+
+                if option == "conectar":
+                    self.connect()
+
+                elif not self.main_proxy:
+                    print("No está conectado")
+                    continue
+
+                if option == "iniciar sesión":
+                    self.log_in()
+
+                elif option == "añadir usuario":
+                    self.add_user()
+
+                elif option == "eliminar usuario":
+                    self.delete_user()
+
+                elif option == "cerrar sesión":
+                    self.close_session()
+
+            except IceFlix.Unauthorized:
+                print("Acceso no autorizado")
+
+            except IceFlix.TemporaryUnavailable:
+                print("El servicio no está disponible. Inténtelo más tarde")
+                continue
+
+            except Ice.ConnectionRefusedException:
+                print("El servicio principal ha fallado. Conéctese de nuevo.")
+                self.main_proxy = None
+
+            except Ice.ObjectNotExistException:
+                print("El vídeo seleccionado no está disponible")
+
+            except EOFError:
+                print("Saliendo del programa...")
+                break
+
+if __name__ == "__main__":
+    Client().main(sys.argv)

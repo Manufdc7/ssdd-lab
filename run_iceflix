@@ -1,0 +1,23 @@
+#!/bin/bash
+
+echo "Executing all services..."
+
+rm /tmp/icestorm/*
+mkdir -p /tmp/icestorm
+icebox --Ice.Config=configs/icebox.config &
+
+./iceflix/main.py --Ice.Config=configs/main.config &
+
+PID_MAIN=$!
+
+./iceflix/auth_service.py --Ice.Config=configs/auth_service.config &
+
+PID_AUTH=$!
+
+echo $'All services available'
+
+trap "kill -9 $PID_AUTH; kill -9  $PID_MAIN" SIGHUP SIGINT SIGTERM
+
+wait
+
+echo $'\nShutdown request. Exiting...'
