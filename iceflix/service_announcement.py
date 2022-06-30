@@ -8,6 +8,8 @@ import os
 import threading
 
 import Ice
+import IceStorm
+
 
 try:
     import IceFlix
@@ -41,6 +43,7 @@ class ServiceAnnouncementsListener(IceFlix.ServiceAnnouncements):
         self.catalogs = {}
         self.mains = {}
         self.known_ids = set()
+        self.servant.announcement_sub = self
 
     def newService(
         self, service, service_id, current
@@ -56,7 +59,18 @@ class ServiceAnnouncementsListener(IceFlix.ServiceAnnouncements):
             logging.debug("New service isn't of my type. Ignoring")
             return
 
-        self.servant.share_data_with(proxy,self)
+        topic_manager = IceStorm.TopicManagerPrx.checkedCast(current.adapter.getCommunicator().stringToProxy("IceStorm/TopicManager:tcp -p 10000"))
+
+        try:
+            topic = topic_manager.create("ServiceAnnouncements")
+        except IceStorm.TopicExists:
+            topic = topic_manager.retrieve("ServiceAnnouncements")
+
+        publisher = IceFlix.ServiceAnnouncementsPrx.uncheckedCast(topic.getPublisher())
+
+        publisher.announce(self.proxy, self.servant.service_id)
+
+        threading.Timer(0.5, self.servant.share_data_with, [proxy]).start()
 
     def announce(self, service, service_id, current):  # pylint: disable=unused-argument
         """Receive an announcement."""
@@ -75,10 +89,15 @@ class ServiceAnnouncementsListener(IceFlix.ServiceAnnouncements):
             self.authenticators[service_id] = IceFlix.AuthenticatorPrx.uncheckedCast(
                 service
             )
+            if self.own_type == IceFlix.MainPrx:
+                self.servant.authenticators_proxies.append(IceFlix.AuthenticatorPrx.uncheckedCast(service))
 
         elif service.ice_isA("::IceFlix::MediaCatalog"):
             logging.debug("Received catalog service")
             self.catalogs[service_id] = IceFlix.MediaCatalogPrx.uncheckedCast(service)
+
+            if self.own_type == IceFlix.MainPrx:
+                self.servant.catalog_proxies.append(IceFlix.MediaCatalogPrx.uncheckedCast(service))
 
         else:
             logging.info(

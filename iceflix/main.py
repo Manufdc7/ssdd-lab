@@ -36,13 +36,12 @@ class Main(IceFlix.Main):
         self.catalog_proxies = []
         self.adminToken = adminToken
         self.updated = False
-        self.announcement_sub
+        self.announcement_sub = None
         self.lock = Lock()
 
-    def share_data_with(self, service, service_announcement):
+    def share_data_with(self, service):
         """Share the current database with an incoming service."""
         database = volatileServicesI(self.authenticators_proxies, self.catalog_proxies)
-        self.announcement_sub = service_announcement
         service.updateDB(database, self.service_id)
 
 
@@ -70,7 +69,7 @@ class Main(IceFlix.Main):
         )
 
     def getAuthenticator(self, current=None):
-        """Retorno de un proxy de autenticacion registrado"""
+        """Returns a registered authenticator proxy """
         service = None
         logging.info("Requested the authentication service")
         while True:
@@ -92,7 +91,7 @@ class Main(IceFlix.Main):
                 raise IceFlix.TemporaryUnavailable
 
     def getCatalog(self, current=None):
-        """Debe retornar un proxy de catálogo registrado"""
+        """Must return a registered catalog proxy"""
         service = None
         logging.info("Requested the catalog service")
         while True:
@@ -139,8 +138,7 @@ class MainApp(Ice.Application):
         """Configure the announcements sender and listener."""
 
         communicator = self.communicator()
-        proxy = communicator.stringToProxy("IceStorm/TopicManager:tcp -p 10000")
-        #proxy = communicator.propertyToProxy("IceStorm.TopicManager")
+        proxy = communicator.propertyToProxy("IceStorm.TopicManager")
         topic_manager = IceStorm.TopicManagerPrx.checkedCast(proxy)
 
         try:
@@ -155,7 +153,7 @@ class MainApp(Ice.Application):
         )
 
         self.subscriber = ServiceAnnouncementsListener(
-            self.servant, self.servant.service_id, IceFlix.MainPrx
+            self.servant, self.servant.service_id, IceFlix.MainPrx, self.proxy,
         )
 
         subscriber_prx = self.adapter.addWithUUID(self.subscriber)
@@ -168,9 +166,12 @@ class MainApp(Ice.Application):
         self.adapter = comm.createObjectAdapter("Main")
         self.adapter.activate()
 
-        self.servant = Main(comm.getProperties().getProperty("AdminToken"))
+        admin_token = comm.getProperties().getProperty("AdminToken")
+        self.servant = Main(admin_token)
 
-        self.proxy = self.adapter.addWithUUID(self.servant) 
+        self.proxy = self.adapter.addWithUUID(self.servant)
+
+        print(f"\n\nPROXY = {self.proxy}\n\nTOKEN DE ADMINISTRADOR = {admin_token}\n") 
 
         self.setup_announcements()
 
