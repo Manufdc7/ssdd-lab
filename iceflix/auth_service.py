@@ -23,7 +23,7 @@ try:
     import IceFlix
 except ImportError:
     Ice.loadSlice(os.path.join(os.path.dirname(__file__), "iceflix.ice"))
-    import IceFlix  
+    import IceFlix
 
 logging.getLogger().setLevel(logging.DEBUG)
 
@@ -125,7 +125,7 @@ class AuthenticatorI(IceFlix.Authenticator):
 
             logging.info(f"New token {new_token} granted to {user}. Publishing new token event")
             self.users_publisher.newToken(user, new_token, self.service_id)
-            
+
             Timer(120.0, self.revocations_publisher.revokeToken, [new_token, self.service_id]).start()
 
             return new_token
@@ -232,7 +232,7 @@ class AuthApp(Ice.Application):
         self.subscriber = None
 
     def get_topic(self, topic_manager, topic_name):
-        
+        """Create or retrieve the topic"""
         try:
             return topic_manager.create(topic_name)
         except IceStorm.TopicExists:
@@ -251,9 +251,9 @@ class AuthApp(Ice.Application):
 
         users_publisher = IceFlix.UserUpdatesPrx.uncheckedCast(topic_users.getPublisher())
         revocations_publisher = IceFlix.RevocationsPrx.uncheckedCast(topic_revocations.getPublisher())
-    
+
         self.servant = AuthenticatorI(users_publisher, revocations_publisher)
-    
+
         self.proxy = self.adapter.addWithUUID(self.servant)
 
         self.announcer = ServiceAnnouncementsSender(

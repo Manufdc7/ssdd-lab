@@ -18,7 +18,7 @@ try:
     import IceFlix
 except ImportError:
     Ice.loadSlice(os.path.join(os.path.dirname(__file__), "iceflix.ice"))
-    import IceFlix  
+    import IceFlix
 
 logging.getLogger().setLevel(logging.DEBUG)
 
@@ -31,7 +31,7 @@ class Main(IceFlix.Main):
 
     def __init__(self, admin_token):
         """Create the Main servant instance."""
-        self.service_id = str(uuid.uuid4()) # key de las etradas de los diccionarios de microservicios
+        self.service_id = str(uuid.uuid4())
         self.authenticators_proxies = []
         self.catalog_proxies = []
         self.admin_token = admin_token
@@ -44,8 +44,7 @@ class Main(IceFlix.Main):
         database = volatileServicesI(self.authenticators_proxies, self.catalog_proxies)
         service.updateDB(database, self.service_id)
 
-
-    def updateDB(self, current_service, service_id, current):  
+    def updateDB(self, current_service, service_id, current):
         # pylint: disable=invalid-name,unused-argument
         """Receives the current main service database from a peer."""
         if service_id not in self.announcement_sub.mains:
@@ -80,7 +79,7 @@ class Main(IceFlix.Main):
                     return service
                 else:
                     logging.info("No authentication service is available")
-                
+
                 raise IceFlix.TemporaryUnavailable
 
             except (Ice.ObjectNotExistException, Ice.ConnectionRefusedException):
@@ -110,13 +109,14 @@ class Main(IceFlix.Main):
 
             except Ice.ConnectTimeoutException:
                 raise IceFlix.TemporaryUnavailable
-    
+
     def isAdmin(self, admin_token, current=None):
+        """Check if is admin"""
         return admin_token == self.admin_token
 
 
 class volatileServicesI(IceFlix.VolatileServices):
-    
+    """Structure of data given by IceFlix"""
     def __init__(self, authenticators, media_catalog):
         self.authenticators = authenticators
         self.mediaCatalogs = media_catalog

@@ -42,8 +42,8 @@ class RevocationsI(IceFlix.Revocations):
                 self.client.token = self.client.main_proxy.getAuthenticator().refreshAuthorization(self.client.user, self.client.pass_hash)
         except AttributeError:
             logger.info("Main proxy unavailable. Cannot figure out current user")
-    
-    
+
+
     def revokeUser(self, user, srv_id, current=None):
         """Revocación de usuario. Se comprueba que es el mismo que el usado por el cliente y
         se cierra sesión"""
@@ -229,3 +229,4 @@ class Client(Ice.Application):
 
 if __name__ == "__main__":
     Client().main(sys.argv)
+    
