@@ -133,6 +133,7 @@ class MainApp(Ice.Application):
         self.adapter = None
         self.announcer = None
         self.subscriber = None
+        
 
     def setup_announcements(self):
         """Configure the announcements sender and listener."""
