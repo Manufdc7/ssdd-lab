@@ -45,9 +45,8 @@ class ServiceAnnouncementsListener(IceFlix.ServiceAnnouncements):
         self.known_ids = set()
         self.servant.announcement_sub = self
 
-    def newService(
-        self, service, service_id, current
-    ):  # pylint: disable=invalid-name,unused-argument
+    def newService(self, service, service_id, current):  
+        # pylint: disable=invalid-name,unused-argument
         """Receive the announcement of a new started service."""
         if service_id == self.service_id:
             logging.debug("Received own announcement. Ignoring")

@@ -5,10 +5,10 @@ import logging
 import uuid
 import sys
 from threading import Lock
-import Ice
 import os
-import IceStorm
 from random import choice
+import Ice
+import IceStorm
 from service_announcement import (
     ServiceAnnouncementsListener,
     ServiceAnnouncementsSender,
@@ -29,12 +29,12 @@ class Main(IceFlix.Main):
     for this interface. Use it with caution
     """
 
-    def __init__(self, adminToken):
+    def __init__(self, admin_token):
         """Create the Main servant instance."""
         self.service_id = str(uuid.uuid4()) # key de las etradas de los diccionarios de microservicios
         self.authenticators_proxies = []
         self.catalog_proxies = []
-        self.adminToken = adminToken
+        self.admin_token = admin_token
         self.updated = False
         self.announcement_sub = None
         self.lock = Lock()
@@ -45,12 +45,11 @@ class Main(IceFlix.Main):
         service.updateDB(database, self.service_id)
 
 
-    def updateDB(
-        self, current_service, service_id, current
-    ):  # pylint: disable=invalid-name,unused-argument
+    def updateDB(self, current_service, service_id, current):  
+        # pylint: disable=invalid-name,unused-argument
         """Receives the current main service database from a peer."""
         if service_id not in self.announcement_sub.mains:
-            logging.info(f"Service {service_id} unknown")
+            logging.info("Service %s unknown", service_id)
             raise IceFlix.UnknownService
 
         self.lock.acquire()
@@ -77,7 +76,7 @@ class Main(IceFlix.Main):
                 if self.authenticators_proxies:
                     service = choice(self.authenticators_proxies)
                     service.ice_ping()
-                    logging.info(f"Available authentication services: {self.authenticators_proxies}")
+                    logging.info("Available authentication services: %s", self.authenticators_proxies)
                     return service
                 else:
                     logging.info("No authentication service is available")
@@ -100,7 +99,7 @@ class Main(IceFlix.Main):
                 if self.catalog_proxies:
                     service = choice(self.catalog_proxies)
                     service.ice_ping()
-                    logging.info(f"Available catalog services: {self.catalog_proxies}")
+                    logging.info("Available catalog services: %s", self.catalog_proxies)
                     return service
 
                 logging.info("No catalog service is available")
@@ -112,8 +111,8 @@ class Main(IceFlix.Main):
             except Ice.ConnectTimeoutException:
                 raise IceFlix.TemporaryUnavailable
     
-    def isAdmin(self, adminToken, current=None):
-        return adminToken==self.adminToken
+    def isAdmin(self, admin_token, current=None):
+        return admin_token == self.admin_token
 
 
 class volatileServicesI(IceFlix.VolatileServices):

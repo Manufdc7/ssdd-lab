@@ -8,7 +8,6 @@ import signal
 from uuid import uuid4
 from hashlib import sha256
 from os import _exit
-from threading import Timer
 
 
 
